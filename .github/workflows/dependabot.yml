@@ -19,15 +19,37 @@ jobs:
             pull-requests: write
             issues: write
         if: >-
-            github.actor == 'dependabot[bot]' &&
-            github.event.sender.login == 'dependabot[bot]' &&
             github.event.pull_request.user.login == 'dependabot[bot]' &&
             github.event.pull_request.head.repo.full_name == github.repository &&
-            !github.event.pull_request.draft
+            !github.event.pull_request.draft &&
+            ((github.actor == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]') ||
+              (github.event.action == 'synchronize' && vars.PR_AUTOMATION_SLUG != '' &&
+                github.actor == format('{0}[bot]', vars.PR_AUTOMATION_SLUG) &&
+                github.event.sender.login == github.actor))
         runs-on: ubuntu-latest
         timeout-minutes: 35
         steps:
             # This write-capable workflow never checks out or executes PR code.
+            - name: Verify commit provenance after a branch update
+              if: github.event.sender.login != 'dependabot[bot]'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  UPDATE_BOT: ${{ github.event.sender.login }}
+              shell: bash
+              run: |
+                  gh api --method GET "repos/$GITHUB_REPOSITORY/compare/$BASE_SHA...$HEAD_SHA?per_page=100" |
+                      jq -e --arg bot "$UPDATE_BOT" '
+                          .behind_by == 0 and .total_commits > 0 and (.commits | length) == .total_commits and
+                          any(.commits[]; .author.login == "dependabot[bot]") and
+                          all(.commits[];
+                              .commit.verification.verified and .commit.verification.reason == "valid" and
+                              ((.committer.login == .author.login and .committer.type == "Bot") or
+                               (.committer.login == "web-flow" and .committer.id == 19864447)) and
+                              ((.author.login == "dependabot[bot]" and (.parents | length) == 1) or
+                               (.author.login == $bot and (.parents | length) == 2)))
+                      '
             - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
               id: metadata
               with:
