@@ -1,0 +1,57 @@
+version: 2
+updates:
+    - package-ecosystem: gomod
+      directory: /
+      cooldown:
+          default-days: 1
+      schedule:
+          interval: cron
+          cronjob: "0 3 * * *"
+          timezone: Europe/Berlin
+      open-pull-requests-limit: 3
+      labels: [dependencies, go]
+      commit-message: { prefix: "build", include: scope }
+      groups:
+          go-compatible:
+              applies-to: version-updates
+              patterns: ["*"]
+              update-types: [minor, patch]
+          go-security-major:
+              applies-to: security-updates
+              patterns: ["*"]
+              update-types: [major]
+          go-security:
+              applies-to: security-updates
+              patterns: ["*"]
+              update-types: [minor, patch]
+
+    - package-ecosystem: github-actions
+      directory: /
+      cooldown:
+          default-days: 1
+      schedule:
+          interval: cron
+          cronjob: "0 3 * * *"
+          timezone: Europe/Berlin
+      open-pull-requests-limit: 2
+      labels: [dependencies, github-actions]
+      commit-message: { prefix: "ci", include: scope }
+      groups:
+          actions-compatible:
+              patterns: ["*"]
+              update-types: [minor, patch]
+
+    - package-ecosystem: docker
+      directory: /
+      cooldown:
+          default-days: 1
+      schedule:
+          interval: cron
+          cronjob: "0 3 * * *"
+          timezone: Europe/Berlin
+      open-pull-requests-limit: 2
+      labels: [dependencies, docker]
+      commit-message: { prefix: "build", include: scope }
+      groups:
+          caddy-images:
+              patterns: ["caddy"]

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title">
+  <title id="title">REIKEM · Caddy DNS provider for Domain-Bestellsystem</title>
+  <rect width="1200" height="320" fill="#122630"/>
+  <path d="M0 300H1200V320H0Z" fill="#30b99c"/>
+  <g fill="none" stroke="#65d4ba" stroke-width="5">
+    <path d="M955 92L1054 160L955 228M1054 160H1125"/>
+    <circle cx="955" cy="92" r="14" fill="#122630"/>
+    <circle cx="955" cy="228" r="14" fill="#122630"/>
+    <circle cx="1054" cy="160" r="22" fill="#122630"/>
+    <circle cx="1125" cy="160" r="14" fill="#122630"/>
+  </g>
+  <g font-family="system-ui, sans-serif">
+    <text x="56" y="75" font-size="25" font-weight="700" letter-spacing="5" fill="#65d4ba">REIKEM</text>
+    <text x="56" y="162" font-size="59" font-weight="700" fill="#f4f8f8">Caddy DNS provider</text>
+    <text x="58" y="219" font-size="32" fill="#b6cfd4">Domain-Bestellsystem</text>
+  </g>
+</svg>

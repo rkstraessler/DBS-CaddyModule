@@ -1,0 +1,7 @@
+api.example.com {
+	tls {
+		dns domain_bestellsystem
+	}
+
+	reverse_proxy anonymizer:3000
+}

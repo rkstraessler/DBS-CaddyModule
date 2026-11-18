@@ -1,0 +1,67 @@
+name: CI
+on:
+    pull_request:
+        branches: [main]
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    go:
+        name: Go verification
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+              with:
+                  go-version-file: go.mod
+            - run: bash .github/scripts/ci/verify-go.sh
+
+    image:
+        name: Caddy image
+        runs-on: ubuntu-latest
+        timeout-minutes: 25
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+              with:
+                  go-version-file: go.mod
+            - run: docker build -t dbs-caddy:ci .
+            - run: bash .github/scripts/ci/verify-image.sh dbs-caddy:ci
+
+    dependencies:
+        name: Dependency review
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+
+    required:
+        name: Required CI
+        if: always()
+        needs: [go, image, dependencies]
+        runs-on: ubuntu-latest
+        timeout-minutes: 2
+        env:
+            GO_RESULT: ${{ needs.go.result }}
+            IMAGE_RESULT: ${{ needs.image.result }}
+            DEPENDENCY_RESULT: ${{ needs.dependencies.result }}
+        steps:
+            - run: |
+                  [[ "$GO_RESULT" == success && "$IMAGE_RESULT" == success ]]
+                  if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+                      [[ "$DEPENDENCY_RESULT" == success ]]
+                  fi
+              shell: bash

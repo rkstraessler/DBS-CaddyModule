@@ -1,0 +1,10 @@
+changelog:
+    categories:
+        - title: Security
+          labels: [security]
+        - title: Changes
+          labels: [enhancement, bug, documentation, maintenance]
+        - title: Dependency updates
+          labels: [dependencies]
+        - title: Other changes
+          labels: ["*"]

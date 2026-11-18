@@ -1,0 +1,101 @@
+name: Dependabot merge
+on:
+    pull_request_target:
+        branches: [main]
+        types: [opened, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+concurrency:
+    group: dependabot-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+
+jobs:
+    metadata:
+        permissions:
+            contents: write
+            checks: read
+            statuses: read
+            pull-requests: write
+            issues: write
+        if: >-
+            github.actor == 'dependabot[bot]' &&
+            github.event.sender.login == 'dependabot[bot]' &&
+            github.event.pull_request.user.login == 'dependabot[bot]' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            !github.event.pull_request.draft
+        runs-on: ubuntu-latest
+        timeout-minutes: 35
+        steps:
+            # This write-capable workflow never checks out or executes PR code.
+            - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
+              id: metadata
+              with:
+                  github-token: ${{ github.token }}
+            - name: Classify update
+              id: classify
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  PR: ${{ github.event.pull_request.number }}
+                  ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+                  UPDATE: ${{ steps.metadata.outputs.update-type }}
+                  GROUP: ${{ steps.metadata.outputs.dependency-group }}
+                  MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
+              run: |
+                  case "$ECOSYSTEM" in
+                      gomod) labels=go ;;
+                      docker) labels=docker ;;
+                      github_actions|github-actions) labels=github-actions ;;
+                      *) echo 'Unknown ecosystem, manual review required.'; exit 0 ;;
+                  esac
+                  case "$UPDATE" in
+                      version-update:semver-patch) kind=patch ;;
+                      version-update:semver-minor) kind=minor ;;
+                      version-update:semver-major) kind=major ;;
+                      *) kind='' ;;
+                  esac
+                  labels="dependencies,$labels"
+                  [[ -z "$kind" ]] || labels="$labels,$kind"
+                  [[ "$GROUP" != go-security* ]] || labels="$labels,security"
+                  if [[ ( "$kind" == patch || "$kind" == minor ) && "$MAINTAINER_CHANGES" == false ]]; then
+                      labels="$labels,automerge"
+                      echo 'eligible=true' >> "$GITHUB_OUTPUT"
+                  else
+                      labels="$labels,manual-review"
+                  fi
+                  gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label "$labels"
+            - name: Approve and merge the verified commit after CI
+              if: steps.classify.outputs.eligible == 'true'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  PR: ${{ github.event.pull_request.number }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+              shell: bash
+              run: |
+                  for attempt in {1..120}; do
+                      current=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,mergeable,mergeStateStatus,reviewDecision,state,isDraft)
+                      if ! jq -e --arg sha "$HEAD_SHA" '.headRefOid == $sha and .state == "OPEN" and (.isDraft | not) and .mergeable != "CONFLICTING" and .mergeStateStatus != "BEHIND"' <<< "$current" > /dev/null; then
+                          exit 0
+                      fi
+                      checks=$(gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required --json name,state,workflow) || true
+                      if jq -e 'length > 0 and (map(select(.name == "Required CI" and .workflow == "CI")) | length == 1) and all(.[]; .state == "SUCCESS")' <<< "$checks" >/dev/null; then
+                          break
+                      fi
+                      if jq -e 'any(.[]; .state == "FAILURE" or .state == "CANCELLED" or .state == "TIMED_OUT" or .state == "ACTION_REQUIRED")' <<< "$checks" >/dev/null; then
+                          exit 0
+                      fi
+                      if [[ "$attempt" == 120 ]]; then
+                          echo 'Required checks could not be verified.'
+                          exit 1
+                      fi
+                      sleep 15
+                  done
+                  current=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,mergeable,mergeStateStatus,reviewDecision,state,isDraft)
+                  if ! jq -e --arg sha "$HEAD_SHA" '.headRefOid == $sha and .state == "OPEN" and (.isDraft | not) and .mergeable == "MERGEABLE" and .mergeStateStatus != "BEHIND"' <<< "$current" >/dev/null; then
+                      exit 0
+                  fi
+                  if ! jq -e '.reviewDecision == "APPROVED"' <<< "$current" >/dev/null; then
+                      gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" \
+                          -f commit_id="$HEAD_SHA" -f event=APPROVE --silent
+                  fi
+                  gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --auto --match-head-commit "$HEAD_SHA"

@@ -1,0 +1,65 @@
+# Caddy DNS provider for Domain-Bestellsystem
+
+Caddy module `dns.providers.domain_bestellsystem` enables Let's Encrypt DNS-01 for domains hosted on Domain-Bestellsystem, including wildcard certificates. Caddy discovers the public authoritative DNS zone and waits for the TXT record to propagate. The module manages individual TXT records over SOAP 1.1. [Caddy TLS](https://caddyserver.com/docs/caddyfile/directives/tls) · [Domain-Bestellsystem WSDL](https://soap.domain-bestellsystem.de/soap.php?wsdl)
+
+## Deploy with Komodo
+
+1. Use a published `ghcr.io/rkstraessler/caddy-domainbestellsystem` image for Linux amd64. Set `CADDY_IMAGE` to a full version or digest for a repeatable deployment and rollback.
+2. Keep `compose.yaml`, `Caddyfile`, and `sites/` together in the Komodo stack directory. Create the external network once with `docker network create proxy` if needed and attach each upstream service to it.
+3. Set the three variables below in Komodo's stack environment. Replace the example hostname and upstream in `sites/api.caddy`, then deploy the stack. TCP 443 must be reachable by clients. Caddy stores certificates and ACME account data in the persistent `caddy_data` volume. Preserve it when updating the stack.
+
+| Variable | Value |
+| --- | --- |
+| `DBS_SOAP_USERNAME` | Full Basic Auth login supplied by the provider. For a partner login the format is `PARTNER-ID/SOAP-USER`. |
+| `DBS_SOAP_PASSWORD` | Password of the SOAP account. |
+| `DBS_SOAP_ENDPOINT` | HTTPS service endpoint, commonly `https://soap.domain-bestellsystem.de/soap.php`. Use the endpoint assigned to your account. |
+
+Create or enable the SOAP account in Domain-Bestellsystem with access to the required public zones. For local Compose, provide the same environment values from a private copy of `.env.example`. Access to Docker inspection and Komodo must be limited to trusted operators.
+
+Add each site under `sites/*.caddy`. For example:
+
+```caddyfile
+api.example.com {
+    tls {
+        dns domain_bestellsystem
+    }
+
+    reverse_proxy anonymizer:3000
+}
+```
+
+Public DNS must serve the challenge TXT record from the authoritative zone. An internal DNS view can point the application hostname at a private Caddy address while Let's Encrypt resolves the challenge through public DNS. When split DNS interferes with zone discovery, set `resolvers` in the `tls` block to recursive resolvers that can see public DNS. [Caddy DNS challenge options](https://caddyserver.com/docs/caddyfile/directives/tls#syntax)
+
+## Build and test
+
+Requires Go 1.27.4 and Docker with Compose v2. The Dockerfile uses the official Caddy 2.11.9 Alpine builder and runtime images, pinned by digest. The module uses libdns 1.1.1. The image includes dependency license notices under `/usr/share/licenses/caddy-domainbestellsystem/`.
+
+```sh
+go test -race ./...
+docker build -t dbs-caddy:local .
+docker run --rm --network none dbs-caddy:local caddy list-modules --skip-standard
+```
+
+The tests use a local TLS SOAP mock based on the vendor WSDL and DNS examples. CI verifies the Go source, race behavior, dependencies, the Caddy image and Caddyfile, and scans the built executable with govulncheck. For a separately authorized live test, configure a disposable public domain and a separate Caddy data volume, then set the global `acme_ca` to `https://acme-staging-v02.api.letsencrypt.org/directory`. Confirm that issuance succeeds, both ordinary and wildcard challenges work, and the TXT records are removed. Switch back to the production directory and data volume for deployment. [Let's Encrypt staging](https://letsencrypt.org/docs/staging-environment/)
+
+## GitHub setup
+
+A repository administrator applies these settings when setting up a new repository.
+
+1. Push the initial project to `main` and set it as the default branch. Enable squash merging, native auto-merge, automatic deletion of merged branches, dependency graph and Dependabot alerts/security updates, and private vulnerability reporting. Keep workflow permissions read-only by default. Enable **Allow GitHub Actions to create and approve pull requests** for the automation described below, subject to organization policy.
+2. Provision the labels before enabling scheduled dependency updates with `bash .github/scripts/sync-labels.sh`. This updates the listed labels in place. Dependabot runs daily at 03:00 Europe/Berlin using its native timezone option. It groups compatible Go and Actions updates and groups both Caddy base images. GitHub Dependabot rebases open updates when the base changes. [Dependabot options](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference)
+3. Create an **active branch ruleset** targeting `main`. Require a pull request with one approval, dismiss stale approvals, require conversation resolution, allow squash only, and require the **Required CI** check from GitHub Actions with **Require branches to be up to date before merging**. Do not enable **Require review from Code Owners** if automated Dependabot approval is needed. `CODEOWNERS` requests review from the repository owner. Keep human write access with the administrators if every ordinary approval must come from them. Give only the repository-admin role **Always allow** bypass on this ruleset.
+4. Use a second active ruleset on `main` to restrict deletions and block force pushes, with no bypass actors. Protect release tags `v*` with a tag ruleset restricting creation to administrators and blocking updates and deletions.
+5. Install the official [autofix.ci app](https://github.com/apps/autofix-ci) for this repository. The workflow formats first-party Go files on PRs. Branch rules require CI for the resulting commit. Install the app before relying on automatic fixes.
+6. For the first release, create an annotated SemVer tag on a verified commit already on `main`. The release workflow verifies the tagged source and publishes the same checked image to GHCR, then generates GitHub release notes. Stable releases update the major, minor, and `latest` aliases only when newer for that channel. Prereleases get their full version tag only. Make the GHCR package public after it is created and verify that an unauthenticated pull succeeds. [GitHub package visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+
+The merge workflow accepts verified Dependabot metadata for the current signed patch/minor commit and waits for required checks before submitting a commit-specific review and requesting native squash auto-merge. It gets no ruleset bypass. Major updates and unclassified changes require manual review. If organization policy blocks GitHub Actions approvals or requires a code-owner review, keep the protection and approve the eligible PR manually. GitHub rulesets cannot express a semver-specific review bypass. [GitHub ruleset rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets) · [Dependabot automation](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions)
+
+## Troubleshooting
+
+- **HTTP 401 or SOAP authentication error** — Verify the full Basic Auth login, SOAP account permissions, and endpoint in Komodo. Errors report status or return codes with credentials and server-supplied message text omitted.
+- **SOAP code 2303 during zone lookup** — Check which public zone is authoritative and whether the SOAP account manages it. For CNAME delegation, configure `dns_challenge_override_domain` with the complete challenge target name in a zone the account can modify.
+- **Propagation timeout** — Inspect the TXT record through public DNS and at authoritative nameservers. Adjust Caddy's `propagation_timeout` if needed. Reads retry bounded transient failures. Writes execute once per call because the vendor contract does not provide a write idempotency key. If a response is lost, inspect the zone before removing any stale challenge record.
+- **Parallel challenges** — Individual vendor operations preserve other records, including different values at the same name. In-process operations for a zone are serialized. Separate Caddy processes need coordinated certificate storage if they manage the same certificates. The vendor exposes neither record IDs nor a compare-and-delete operation for independently recreating an identical record.
+
+The provider source is MIT-licensed, copyright REIKEM. Caddy and libdns retain their upstream licenses. [MIT license](LICENSE) · [Caddy license](https://github.com/caddyserver/caddy/blob/v2.11.9/LICENSE) · [libdns license](https://github.com/libdns/libdns/blob/v1.1.1/LICENSE)
