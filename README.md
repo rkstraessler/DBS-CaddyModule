@@ -2,21 +2,48 @@
 
 Caddy module `dns.providers.domain_bestellsystem` enables Let's Encrypt DNS-01 for domains hosted on Domain-Bestellsystem, including wildcard certificates. Caddy discovers the public authoritative DNS zone and waits for the TXT record to propagate. The module manages individual TXT records over SOAP 1.1. [Caddy TLS](https://caddyserver.com/docs/caddyfile/directives/tls) · [Domain-Bestellsystem WSDL](https://soap.domain-bestellsystem.de/soap.php?wsdl)
 
-## Deploy with Komodo
+## Quick start with Docker Compose
 
-1. Use a published `ghcr.io/rkstraessler/caddy-domainbestellsystem` image for Linux amd64. Set `CADDY_IMAGE` to a full version or digest for a repeatable deployment and rollback.
-2. Keep `compose.yaml`, `Caddyfile`, and `sites/` together in the Komodo stack directory. Create the external network once with `docker network create proxy` if needed and attach each upstream service to it.
-3. Set the three variables below in Komodo's stack environment. Replace the example hostname and upstream in `sites/api.caddy`, then deploy the stack. TCP 443 must be reachable by clients. Caddy stores certificates and ACME account data in the persistent `caddy_data` volume. Preserve it when updating the stack.
+Use a Linux amd64 host with Docker Compose v2 and a Domain-Bestellsystem SOAP account that can manage your public DNS zone. Run this from the directory where you want to create the stack.
 
-| Variable | Value |
-| --- | --- |
-| `DBS_SOAP_USERNAME` | Full Basic Auth login supplied by the provider. For a partner login the format is `PARTNER-ID/SOAP-USER`. |
-| `DBS_SOAP_PASSWORD` | Password of the SOAP account. |
-| `DBS_SOAP_ENDPOINT` | HTTPS service endpoint, commonly `https://soap.domain-bestellsystem.de/soap.php`. Use the endpoint assigned to your account. |
+```sh
+base=https://raw.githubusercontent.com/rkstraessler/DBS-CaddyModule/v1.0.0
+mkdir dbs-caddy &&
+    cd dbs-caddy &&
+    mkdir sites &&
+    curl -fsSLo compose.yaml "$base/compose.yaml" &&
+    curl -fsSLo Caddyfile "$base/Caddyfile" &&
+    curl -fsSLo sites/api.caddy "$base/sites/api.caddy" &&
+    curl -fsSLo .env.example "$base/.env.example" &&
+    cp .env.example .env
+```
 
-Create or enable the SOAP account in Domain-Bestellsystem with access to the required public zones. For local Compose, provide the same environment values from a private copy of `.env.example`. Access to Docker inspection and Komodo must be limited to trusted operators.
+Fill in `.env` before starting Caddy. For partner accounts, use the full `PARTNER-ID/SOAP-USER` login. Use the HTTPS endpoint assigned to your account and wrap real values containing `$` or `#` in single quotes. Set `CADDY_IMAGE` to a version or digest for repeatable upgrades and rollback.
 
-Add each site under `sites/*.caddy`. For example:
+```dotenv
+DBS_SOAP_USERNAME=
+DBS_SOAP_PASSWORD=
+DBS_SOAP_ENDPOINT=https://soap.domain-bestellsystem.de/soap.php
+CADDY_IMAGE=ghcr.io/rkstraessler/caddy-domainbestellsystem:1.0.0
+```
+
+In `sites/api.caddy`, replace `api.example.com` and `anonymizer:3000` with your public hostname and upstream address. Attach any upstream containers to the shared `proxy` network and make TCP 443 reachable by clients.
+
+```sh
+docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
+docker compose up -d
+docker compose ps
+```
+
+Caddy stores certificates and ACME account data in `caddy_data`. Preserve that volume when updating the stack. [Compose file](compose.yaml) · [Environment example](.env.example)
+
+### Komodo
+
+Deploy the same `compose.yaml` as a stack, keep `Caddyfile` and `sites/` beside it, and enter the `.env` values in the stack environment.
+
+### Site configuration
+
+Add one file per site under `sites/` with a `.caddy` extension.
 
 ```caddyfile
 api.example.com {

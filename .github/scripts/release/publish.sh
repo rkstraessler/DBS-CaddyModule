@@ -76,6 +76,6 @@ fi
 
 if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
     gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-        --notes "$(printf '![REIKEM Caddy DNS provider](https://raw.githubusercontent.com/%s/%s/.github/assets/release-banners/stable.svg)\n\nContainer image: `%s@%s`' "$GITHUB_REPOSITORY" "$revision" "$image" "$digest")" "${release_flags[@]}"
+        --notes "$(printf '![REIKEM DBS Caddy Module release banner](https://raw.githubusercontent.com/%s/%s/.github/assets/release-banners/stable.png)\n\nContainer image: `%s@%s`' "$GITHUB_REPOSITORY" "$revision" "$image" "$digest")" "${release_flags[@]}"
 fi
 printf 'Published %s@%s\n' "$image" "$digest"
