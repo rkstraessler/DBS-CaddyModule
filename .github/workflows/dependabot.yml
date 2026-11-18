@@ -43,15 +43,15 @@ jobs:
                   MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
               run: |
                   case "$ECOSYSTEM" in
-                      gomod) labels=go ;;
-                      docker) labels=docker ;;
-                      github_actions|github-actions) labels=github-actions ;;
+                      gomod) labels='go' ;;
+                      docker) labels='docker' ;;
+                      github_actions|github-actions) labels='github-actions' ;;
                       *) echo 'Unknown ecosystem, manual review required.'; exit 0 ;;
                   esac
                   case "$UPDATE" in
-                      version-update:semver-patch) kind=patch ;;
-                      version-update:semver-minor) kind=minor ;;
-                      version-update:semver-major) kind=major ;;
+                      version-update:semver-patch) kind='patch' ;;
+                      version-update:semver-minor) kind='minor' ;;
+                      version-update:semver-major) kind='major' ;;
                       *) kind='' ;;
                   esac
                   labels="dependencies,$labels"
