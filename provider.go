@@ -17,6 +17,7 @@ import (
 	"github.com/libdns/libdns"
 
 	"github.com/rkstraessler/DBS-CaddyModule/internal/dbsoap"
+	"github.com/rkstraessler/DBS-CaddyModule/internal/dnspropagation"
 	_ "github.com/rkstraessler/DBS-CaddyModule/internal/renewalmail" // Register the Caddy log writer.
 )
 
@@ -26,19 +27,22 @@ func init() { caddy.RegisterModule(&Provider{}) }
 
 // Provider manages TXT records for Caddy's DNS-01 solver.
 type Provider struct {
-	client *dbsoap.Client
+	client                *dbsoap.Client
+	verifyACMEPropagation bool
 }
 
 func (*Provider) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{ID: moduleID, New: func() caddy.Module { return new(Provider) }}
 }
 
-func (p *Provider) Provision(_ caddy.Context) error {
+func (p *Provider) Provision(ctx caddy.Context) error {
 	client, err := dbsoap.New(os.Getenv("DBS_SOAP_ENDPOINT"), os.Getenv("DBS_SOAP_USERNAME"), os.Getenv("DBS_SOAP_PASSWORD"))
 	if err != nil {
 		return err
 	}
 	p.client = client
+	// Caddy loads this module for ACME. Direct libdns writes complete after the SOAP call.
+	p.verifyACMEPropagation = ctx.Module() == p
 	return nil
 }
 
@@ -62,7 +66,26 @@ var zoneLocks = func() [64]chan struct{} {
 type borrowedTXT struct{}
 
 func (p *Provider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	return p.change(ctx, zone, records, true)
+	changed, err := p.change(ctx, zone, records, true)
+	if !p.verifyACMEPropagation || len(changed) == 0 {
+		return changed, err
+	}
+	if err == nil {
+		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		err = (dnspropagation.Checker{}).Wait(waitCtx, zone, changed)
+		cancel()
+	}
+	if err == nil {
+		return changed, nil
+	}
+
+	// CertMagic keeps no record for cleanup when AppendRecords fails.
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if _, cleanupErr := p.DeleteRecords(cleanupCtx, zone, changed); cleanupErr != nil {
+		err = errors.Join(err, fmt.Errorf("cleaning up DBS challenge records: %w", cleanupErr))
+	}
+	return nil, err
 }
 
 func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {

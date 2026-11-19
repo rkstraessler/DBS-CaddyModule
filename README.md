@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rkstraessler/DBS-CaddyModule/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rkstraessler/DBS-CaddyModule/actions/workflows/ci.yml)
 
-Caddy DNS provider for Domain-Bestellsystem. Automate ACME DNS-01 challenges and wildcard certificates. Caddy discovers the public authoritative zone and waits for the challenge record to propagate. The `dns.providers.domain_bestellsystem` module manages TXT records over SOAP 1.1.
+Caddy DNS provider for Domain-Bestellsystem. Automate ACME DNS-01 challenges and wildcard certificates. The `dns.providers.domain_bestellsystem` module manages TXT records over SOAP 1.1 and waits for every authoritative nameserver to confirm the current challenge value before Caddy can request validation.
 
 [GitHub Releases](https://github.com/rkstraessler/DBS-CaddyModule/releases) · [Report an issue](https://github.com/rkstraessler/DBS-CaddyModule/issues/new)
 
@@ -111,7 +111,8 @@ Caddy emails the affected host, UTC timestamp, and final error when an automatic
 
 - **HTTP 401 or SOAP fault code 2200** — DBS rejected authentication. Verify the full Basic Auth login, password, and endpoint in Komodo. DBS can return an authentication fault as HTTP 500. The logs report the HTTP status and any numeric DBS fault code, with credentials and server-supplied message text omitted.
 - **SOAP code 2303 during zone lookup** — Check which public zone is authoritative and whether the SOAP account manages it. For CNAME delegation, configure `dns_challenge_override_domain` with the complete challenge target name in a zone the account can modify.
-- **Propagation timeout** — Inspect the TXT record through public DNS and at authoritative nameservers. Adjust Caddy's `propagation_timeout` if needed. Reads retry bounded transient failures. Writes execute once per call because the vendor contract does not provide a write idempotency key. If a response is lost, inspect the zone before removing any stale challenge record.
+- **Authoritative DNS propagation timeout** — The provider discovers the zone's NS records through system DNS and allows up to five minutes for every listed nameserver to return the current TXT value directly. Caddy's `propagation_delay` and `propagation_timeout` apply to its own subsequent check. If the provider times out, inspect the nameserver and record name reported in the error. A CA's recursive resolvers can still cache earlier responses.
+- **SOAP read and write failures** — Reads retry bounded transient failures. Writes execute once per call because the vendor contract does not provide a write idempotency key. If a response is lost, inspect the zone before removing any stale challenge record.
 - **Parallel challenges** — Individual vendor operations preserve other records, including different values at the same name. In-process operations for a zone are serialized. Separate Caddy processes need coordinated certificate storage if they manage the same certificates. The vendor exposes neither record IDs nor a compare-and-delete operation for independently recreating an identical record.
 
 ## Development
