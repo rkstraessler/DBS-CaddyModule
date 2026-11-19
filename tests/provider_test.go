@@ -3,7 +3,9 @@ package tests
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,6 +59,44 @@ func mockProvider(t *testing.T) (*dbs.Provider, *mockDBS) {
 		t.Fatal(err)
 	}
 	return p, mock
+}
+
+func TestCaddyProviderRollsBackWhenPropagationIsCanceled(t *testing.T) {
+	standalone, mock := mockProvider(t)
+	borrowed := libdns.TXT{Name: "_acme-challenge", Text: "existing-token"}
+	owned := libdns.TXT{Name: "_acme-challenge", Text: "new-token"}
+	if _, err := standalone.AppendRecords(t.Context(), zone, []libdns.Record{borrowed}); err != nil {
+		t.Fatal(err)
+	}
+
+	caddyCtx, stop := caddy.NewContext(caddy.Context{Context: t.Context()})
+	defer stop()
+	module, err := caddyCtx.LoadModuleByID("dns.providers.domain_bestellsystem", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	previous := net.DefaultResolver
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(context.Context, string, string) (net.Conn, error) {
+			cancel()
+			return nil, context.Canceled
+		},
+	}
+	t.Cleanup(func() { net.DefaultResolver = previous })
+
+	changed, err := module.(*dbs.Provider).AppendRecords(ctx, zone, []libdns.Record{borrowed, owned})
+	if len(changed) != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected the loaded Caddy module to block on DNS and roll back, got %v, %v", changed, err)
+	}
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	records := mock.records[strings.TrimSuffix(zone, ".")]
+	if len(records) != 1 || records[0].Data != borrowed.Text {
+		t.Fatalf("expected only the borrowed record to remain, got %v", records)
+	}
 }
 
 func (m *mockDBS) serve(w http.ResponseWriter, req *http.Request) {
