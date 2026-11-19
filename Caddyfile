@@ -1,6 +1,15 @@
 {
 	auto_https disable_redirects
 	acme_ca https://acme-v02.api.letsencrypt.org/directory
+
+	log certificate_renewal_mail {
+		output certificate_renewal_mail
+		format json {
+			time_format rfc3339
+		}
+		level ERROR
+		include tls
+	}
 }
 
 import sites/*.caddy

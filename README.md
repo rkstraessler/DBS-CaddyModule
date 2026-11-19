@@ -4,30 +4,98 @@ Caddy module `dns.providers.domain_bestellsystem` enables Let's Encrypt DNS-01 f
 
 ## Quick start with Docker Compose
 
-Use a Linux amd64 host with Docker Compose v2 and a Domain-Bestellsystem SOAP account that can manage your public DNS zone. Run this from the directory where you want to create the stack.
+Use a Linux amd64 host with Docker Compose v2 and a Domain-Bestellsystem SOAP account that can manage your public DNS zone. Save the following files in your stack directory.
 
-```sh
-base=https://raw.githubusercontent.com/rkstraessler/DBS-CaddyModule/v1.0.0
-mkdir dbs-caddy &&
-    cd dbs-caddy &&
-    mkdir sites &&
-    curl -fsSLo compose.yaml "$base/compose.yaml" &&
-    curl -fsSLo Caddyfile "$base/Caddyfile" &&
-    curl -fsSLo sites/api.caddy "$base/sites/api.caddy" &&
-    curl -fsSLo .env.example "$base/.env.example" &&
-    cp .env.example .env
+### `compose.yaml`
+
+```yaml
+services:
+    caddy:
+        image: ${CADDY_IMAGE:-ghcr.io/rkstraessler/caddy-domainbestellsystem:latest}
+        restart: unless-stopped
+        ports:
+            - "443:443"
+        environment:
+            DBS_SOAP_USERNAME: ${DBS_SOAP_USERNAME:?Set DBS_SOAP_USERNAME}
+            DBS_SOAP_PASSWORD: ${DBS_SOAP_PASSWORD:?Set DBS_SOAP_PASSWORD}
+            DBS_SOAP_ENDPOINT: ${DBS_SOAP_ENDPOINT:?Set DBS_SOAP_ENDPOINT}
+            MAIL_API_URL: ${MAIL_API_URL:-}
+            MAIL_AUTH_KEY: ${MAIL_AUTH_KEY:-}
+            MAIL_ADAPTER_KEY: ${MAIL_ADAPTER_KEY:-}
+            MAIL_TO_TARGET: ${MAIL_TO_TARGET:-}
+        volumes:
+            - ./Caddyfile:/etc/caddy/Caddyfile:ro
+            - ./sites:/etc/caddy/sites:ro
+            - caddy_data:/data
+            - caddy_config:/config
+        networks:
+            - proxy
+
+volumes:
+    caddy_data:
+    caddy_config:
+
+networks:
+    proxy:
+        external: true
 ```
 
-Fill in `.env` before starting Caddy. For partner accounts, use the full `PARTNER-ID/SOAP-USER` login. Use the HTTPS endpoint assigned to your account and wrap real values containing `$` or `#` in single quotes. Set `CADDY_IMAGE` to a version or digest for repeatable upgrades and rollback.
+### `.env`
+
+Copy these values from the environment example into `.env` and fill in your SOAP credentials. For partner accounts, use the full `PARTNER-ID/SOAP-USER` login. Use the HTTPS endpoint assigned to your account and wrap values containing `$` or `#` in single quotes. Set `CADDY_IMAGE` to a version or digest that matches the configuration files for repeatable upgrades and rollback. [.env.example](.env.example)
 
 ```dotenv
 DBS_SOAP_USERNAME=
 DBS_SOAP_PASSWORD=
 DBS_SOAP_ENDPOINT=https://soap.domain-bestellsystem.de/soap.php
-CADDY_IMAGE=ghcr.io/rkstraessler/caddy-domainbestellsystem:1.0.0
+# CADDY_IMAGE=ghcr.io/rkstraessler/caddy-domainbestellsystem:latest
+
+# Optional certificate renewal alerts. Set all four values to enable them.
+MAIL_API_URL=
+MAIL_AUTH_KEY=
+MAIL_ADAPTER_KEY=
+MAIL_TO_TARGET=
 ```
 
-In `sites/api.caddy`, replace `api.example.com` and `anonymizer:3000` with your public hostname and upstream address. Attach any upstream containers to the shared `proxy` network and make TCP 443 reachable by clients.
+### `Caddyfile`
+
+```caddyfile
+{
+	auto_https disable_redirects
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+
+	log certificate_renewal_mail {
+		output certificate_renewal_mail
+		format json {
+			time_format rfc3339
+		}
+		level ERROR
+		include tls
+	}
+}
+
+import sites/*.caddy
+```
+
+### `sites/api.caddy`
+
+Create `sites/` and save one `.caddy` file per site. In this example, replace `api.example.com` and `anonymizer:3000` with your public hostname and upstream address.
+
+```caddyfile
+api.example.com {
+	tls {
+		dns domain_bestellsystem
+	}
+
+	reverse_proxy anonymizer:3000
+}
+```
+
+Public DNS must serve the challenge TXT record from the authoritative zone. An internal DNS view can point the application hostname at a private Caddy address while Let's Encrypt resolves the challenge through public DNS. When split DNS interferes with zone discovery, set `resolvers` in the `tls` block to recursive resolvers that can see public DNS. [Caddy DNS challenge options](https://caddyserver.com/docs/caddyfile/directives/tls#syntax)
+
+### Start Caddy
+
+Attach upstream containers to the shared `proxy` network and make TCP 443 reachable by clients.
 
 ```sh
 docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
@@ -35,27 +103,24 @@ docker compose up -d
 docker compose ps
 ```
 
-Caddy stores certificates and ACME account data in `caddy_data`. Preserve that volume when updating the stack. [Compose file](compose.yaml) · [Environment example](.env.example)
+Caddy stores certificates and ACME account data in `caddy_data`. Preserve that volume when updating the stack.
 
 ### Komodo
 
 Deploy the same `compose.yaml` as a stack, keep `Caddyfile` and `sites/` beside it, and enter the `.env` values in the stack environment.
 
-### Site configuration
+### Certificate renewal alerts
 
-Add one file per site under `sites/` with a `.caddy` extension.
+Set all four variables in the Compose environment to enable alerts. Leave them empty to disable email. Use an image that includes `caddy.logging.writers.certificate_renewal_mail` and copy the global `log certificate_renewal_mail` block if you maintain your own Caddyfile. [Caddyfile](Caddyfile) · [REIKEM Mail Go client](https://github.com/rkstraessler/ReikemMailClient_GO/tree/v1.0.0)
 
-```caddyfile
-api.example.com {
-    tls {
-        dns domain_bestellsystem
-    }
+| Variable | Value |
+| --- | --- |
+| `MAIL_API_URL` | HTTPS base URL of the REIKEM Mail API, such as `https://mail.example.org` |
+| `MAIL_AUTH_KEY` | Full API authentication key |
+| `MAIL_ADAPTER_KEY` | Key for the sending adapter |
+| `MAIL_TO_TARGET` | One recipient email address |
 
-    reverse_proxy anonymizer:3000
-}
-```
-
-Public DNS must serve the challenge TXT record from the authoritative zone. An internal DNS view can point the application hostname at a private Caddy address while Let's Encrypt resolves the challenge through public DNS. When split DNS interferes with zone discovery, set `resolvers` in the `tls` block to recursive resolvers that can see public DNS. [Caddy DNS challenge options](https://caddyserver.com/docs/caddyfile/directives/tls#syntax)
+Caddy emails the affected host, UTC timestamp, and final error when an automatic background renewal ends in failure. Periodic maintenance uses a 30-day retry budget before reporting a terminal failure. A renewal that succeeds on retry sends no email. If the mail API rejects the message or is unreachable, Caddy logs the send error.
 
 ## Build and test
 
