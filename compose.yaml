@@ -4,14 +4,7 @@ services:
         restart: unless-stopped
         ports:
             - "443:443"
-        environment:
-            DBS_SOAP_USERNAME: ${DBS_SOAP_USERNAME:?Set DBS_SOAP_USERNAME}
-            DBS_SOAP_PASSWORD: ${DBS_SOAP_PASSWORD:?Set DBS_SOAP_PASSWORD}
-            DBS_SOAP_ENDPOINT: ${DBS_SOAP_ENDPOINT:?Set DBS_SOAP_ENDPOINT}
-            MAIL_API_URL: ${MAIL_API_URL:-}
-            MAIL_AUTH_KEY: ${MAIL_AUTH_KEY:-}
-            MAIL_ADAPTER_KEY: ${MAIL_ADAPTER_KEY:-}
-            MAIL_TO_TARGET: ${MAIL_TO_TARGET:-}
+        env_file: .env
         volumes:
             - ./Caddyfile:/etc/caddy/Caddyfile:ro
             - ./sites:/etc/caddy/sites:ro

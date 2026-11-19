@@ -15,14 +15,7 @@ services:
         restart: unless-stopped
         ports:
             - "443:443"
-        environment:
-            DBS_SOAP_USERNAME: ${DBS_SOAP_USERNAME:?Set DBS_SOAP_USERNAME}
-            DBS_SOAP_PASSWORD: ${DBS_SOAP_PASSWORD:?Set DBS_SOAP_PASSWORD}
-            DBS_SOAP_ENDPOINT: ${DBS_SOAP_ENDPOINT:?Set DBS_SOAP_ENDPOINT}
-            MAIL_API_URL: ${MAIL_API_URL:-}
-            MAIL_AUTH_KEY: ${MAIL_AUTH_KEY:-}
-            MAIL_ADAPTER_KEY: ${MAIL_ADAPTER_KEY:-}
-            MAIL_TO_TARGET: ${MAIL_TO_TARGET:-}
+        env_file: .env
         volumes:
             - ./Caddyfile:/etc/caddy/Caddyfile:ro
             - ./sites:/etc/caddy/sites:ro
@@ -42,7 +35,7 @@ networks:
 
 ### `.env`
 
-Copy these values from the environment example into `.env` and fill in your SOAP credentials. For partner accounts, use the full `PARTNER-ID/SOAP-USER` login. Use the HTTPS endpoint assigned to your account and wrap values containing `$` or `#` in single quotes. Set `CADDY_IMAGE` to a version or digest that matches the configuration files for repeatable upgrades and rollback. [.env.example](.env.example)
+Save the example as `.env` beside `compose.yaml` and fill in your SOAP credentials. Compose passes the file's variables to Caddy. For partner accounts, use the full `PARTNER-ID/SOAP-USER` login. Use the HTTPS endpoint assigned to your account and wrap values containing `$` or `#` in single quotes. Set `CADDY_IMAGE` to a version or digest that matches the configuration files for repeatable upgrades and rollback. [.env.example](.env.example)
 
 ```dotenv
 DBS_SOAP_USERNAME=
@@ -107,7 +100,7 @@ Caddy stores certificates and ACME account data in `caddy_data`. Preserve that v
 
 ### Komodo
 
-Deploy the same `compose.yaml` as a stack, keep `Caddyfile` and `sites/` beside it, and enter the `.env` values in the stack environment.
+Deploy the same `compose.yaml` as a stack and keep `Caddyfile` and `sites/` beside it. Enter the values in the stack environment so Komodo writes the `.env` file. [Komodo Compose stacks](https://komo.do/docs/deploy/compose)
 
 ### Certificate renewal alerts
 
