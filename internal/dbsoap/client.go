@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -67,8 +68,9 @@ type response struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
 	Body    struct {
 		Operation struct {
-			XMLName xml.Name
-			Return  *result `xml:"return"`
+			XMLName   xml.Name
+			Return    *result `xml:"return"`
+			FaultCode string  `xml:"faultcode"`
 		} `xml:",any"`
 	} `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
 }
@@ -190,22 +192,22 @@ func (c *Client) call(ctx context.Context, operation string, payload request) (*
 		return nil, true, fmt.Errorf("DBS SOAP %s transport failed", operation)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		retry := res.StatusCode == http.StatusTooManyRequests || res.StatusCode == http.StatusBadGateway ||
-			res.StatusCode == http.StatusServiceUnavailable || res.StatusCode == http.StatusGatewayTimeout
-		return nil, retry, fmt.Errorf("DBS SOAP %s returned HTTP %d", operation, res.StatusCode)
+	status := res.StatusCode
+	if status != http.StatusOK && status != http.StatusInternalServerError {
+		retry := status == http.StatusTooManyRequests || status == http.StatusBadGateway ||
+			status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+		return nil, retry, fmt.Errorf("DBS SOAP %s returned HTTP %d", operation, status)
 	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, maxResponse+1))
-	if err != nil || len(body) > maxResponse {
-		return nil, false, fmt.Errorf("cannot read bounded DBS SOAP %s response", operation)
-	}
-	var decoded response
-	if err := xml.Unmarshal(body, &decoded); err != nil {
-		return nil, false, fmt.Errorf("invalid XML in DBS SOAP %s response", operation)
-	}
+	decoded, err := decodeResponse(operation, res.Body)
 	op := decoded.Body.Operation
-	if op.XMLName == (xml.Name{Space: envelopeNamespace, Local: "Fault"}) {
-		return nil, false, fmt.Errorf("DBS SOAP %s returned a fault", operation)
+	if err == nil && op.XMLName == (xml.Name{Space: envelopeNamespace, Local: "Fault"}) {
+		return nil, false, faultError(operation, status, op.FaultCode)
+	}
+	if status != http.StatusOK {
+		return nil, false, fmt.Errorf("DBS SOAP %s returned HTTP %d", operation, status)
+	}
+	if err != nil {
+		return nil, false, err
 	}
 	// The manual also shows this legacy response namespace.
 	if op.XMLName.Local != operation+"Response" ||
@@ -217,4 +219,33 @@ func (c *Client) call(ctx context.Context, operation string, payload request) (*
 		return nil, false, &apiError{operation, *op.Return.ReturnCode}
 	}
 	return op.Return, false, nil
+}
+
+func decodeResponse(operation string, reader io.Reader) (response, error) {
+	body, err := io.ReadAll(io.LimitReader(reader, maxResponse+1))
+	if err != nil || len(body) > maxResponse {
+		return response{}, fmt.Errorf("cannot read bounded DBS SOAP %s response", operation)
+	}
+	var decoded response
+	if err := xml.Unmarshal(body, &decoded); err != nil {
+		return response{}, fmt.Errorf("invalid XML in DBS SOAP %s response", operation)
+	}
+	return decoded, nil
+}
+
+func faultError(operation string, status int, value string) error {
+	message := fmt.Sprintf("DBS SOAP %s returned HTTP %d", operation, status)
+	if status == http.StatusOK {
+		message = fmt.Sprintf("DBS SOAP %s returned a fault", operation)
+	}
+	// Only report a numeric DBS code from the fault envelope. The server's
+	// message and detail fields may contain request data.
+	code, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || code < 1000 || code > 9999 {
+		return errors.New(message)
+	}
+	if code == 2200 {
+		return fmt.Errorf("%s (SOAP fault code %d: authentication rejected)", message, code)
+	}
+	return fmt.Errorf("%s (SOAP fault code %d)", message, code)
 }
