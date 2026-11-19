@@ -10,7 +10,7 @@ Caddy DNS provider for Domain-Bestellsystem. Automate ACME DNS-01 challenges and
 
 ## Installation
 
-Requires a Linux amd64 host with Docker Compose v2, a Domain-Bestellsystem SOAP account that can manage your public DNS zone, and a GHCR image that includes the certificate renewal mail module.
+Requires a Linux amd64 host with Docker Compose v2, a Domain-Bestellsystem SOAP account that can manage your public DNS zone, and a GHCR image that bundles the base Caddyfile.
 
 ## Quick start
 
@@ -27,7 +27,6 @@ services:
             - "443:443"
         env_file: .env
         volumes:
-            - ./Caddyfile:/etc/caddy/Caddyfile:ro
             - ./sites:/etc/caddy/sites:ro
             - caddy_data:/data
             - caddy_config:/config
@@ -52,6 +51,7 @@ DBS_SOAP_USERNAME=
 DBS_SOAP_PASSWORD=
 DBS_SOAP_ENDPOINT=https://soap.domain-bestellsystem.de/soap.php
 # CADDY_IMAGE=ghcr.io/rkstraessler/caddy-domainbestellsystem:latest
+# CADDY_ACME_CA=https://acme-staging-v02.api.letsencrypt.org/directory
 
 # Optional certificate renewal alerts. Set all four values to enable them.
 MAIL_API_URL=
@@ -60,25 +60,7 @@ MAIL_ADAPTER_KEY=
 MAIL_TO_TARGET=
 ```
 
-### `Caddyfile`
-
-```caddyfile
-{
-	auto_https disable_redirects
-	acme_ca https://acme-v02.api.letsencrypt.org/directory
-
-	log certificate_renewal_mail {
-		output certificate_renewal_mail
-		format json {
-			time_format rfc3339
-		}
-		level ERROR
-		include tls
-	}
-}
-
-import sites/*.caddy
-```
+The image supplies the base Caddyfile and imports `sites/*.caddy`. It uses the production Let's Encrypt directory by default. Set `CADDY_ACME_CA` in `.env` to the staging URL above for a test stack. When upgrading from v1.1.0, remove the `./Caddyfile:/etc/caddy/Caddyfile:ro` entry from the stack's Compose file to use the bundled configuration.
 
 ### `sites/api.caddy`
 
@@ -110,7 +92,7 @@ Caddy stores certificates and ACME account data in `caddy_data`. Preserve that v
 
 ### Komodo
 
-Deploy the same `compose.yaml` as a stack and keep `Caddyfile` and `sites/` beside it. Enter the values in the stack environment so Komodo writes the `.env` file. [Komodo Compose stacks](https://komo.do/docs/deploy/compose)
+Deploy the same `compose.yaml` as a stack and put your site files in `sites/` beside it. Enter the values in the stack environment so Komodo writes the `.env` file. [Komodo Compose stacks](https://komo.do/docs/deploy/compose)
 
 ### Certificate renewal alerts
 
@@ -142,7 +124,7 @@ docker build -t dbs-caddy:local .
 docker run --rm --network none dbs-caddy:local caddy list-modules --skip-standard
 ```
 
-The tests use a local TLS SOAP mock based on the vendor WSDL and DNS examples. CI verifies the Go source, race behavior, dependencies, the Caddy image and Caddyfile, and scans the built executable with govulncheck. For a separately authorized live test, configure a disposable public domain and a separate Caddy data volume, then set the global `acme_ca` to `https://acme-staging-v02.api.letsencrypt.org/directory`. Confirm that issuance succeeds, both ordinary and wildcard challenges work, and the TXT records are removed. Switch back to the production directory and data volume for deployment. [Let's Encrypt staging](https://letsencrypt.org/docs/staging-environment/)
+The tests use a local TLS SOAP mock based on the vendor WSDL and DNS examples. CI verifies the Go source, race behavior, dependencies, the Caddy image and Caddyfile, and scans the built executable with govulncheck. For a separately authorized live test, configure a disposable public domain and a separate Caddy data volume, then set `CADDY_ACME_CA` in the test stack environment to `https://acme-staging-v02.api.letsencrypt.org/directory`. Confirm that issuance succeeds, both ordinary and wildcard challenges work, and the TXT records are removed. Use the default ACME directory and the production data volume for production deployments. [Let's Encrypt staging](https://letsencrypt.org/docs/staging-environment/)
 
 ### GitHub automation
 

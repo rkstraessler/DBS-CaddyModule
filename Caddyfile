@@ -1,6 +1,6 @@
 {
 	auto_https disable_redirects
-	acme_ca https://acme-v02.api.letsencrypt.org/directory
+	acme_ca {$CADDY_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
 
 	log certificate_renewal_mail {
 		output certificate_renewal_mail
