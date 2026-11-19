@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Certificate renewal failed</title>
+</head>
+<body style="margin:0;background-color:#f1f5f9;color:#172334;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9;">
+        <tr><td align="center" style="padding:32px 12px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background-color:#ffffff;border:1px solid #d6dfe9;">
+                <tr><td style="padding:28px 32px;background-color:#18283d;color:#ffffff;border-top:4px solid #f97066;">
+                    <p style="margin:0 0 10px;color:#c3d1e0;font-size:13px;letter-spacing:1px;">CADDY · TLS ALERT</p>
+                    <h1 style="margin:0;font-size:26px;line-height:1.25;">Certificate renewal failed</h1>
+                </td></tr>
+                <tr><td style="padding:28px 32px;">
+                    <p style="margin:0 0 6px;color:#46586f;font-size:13px;">Affected host</p>
+                    <p style="margin:0 0 24px;font-size:22px;font-weight:bold;overflow-wrap:anywhere;">{{.Host}}</p>
+                    <table width="100%" cellspacing="0" cellpadding="0" style="font-size:14px;line-height:1.5;text-align:left;">
+                        <tr>
+                            <th scope="row" align="left" style="padding:0 12px 10px 0;color:#46586f;">Detected at</th>
+                            <td style="padding:0 0 10px;">{{.Time}}</td>
+                        </tr>
+                        {{if .OtherNames}}<tr>
+                            <th scope="row" align="left" style="padding:0 12px 10px 0;color:#46586f;">Other certificate names</th>
+                            <td style="padding:0 0 10px;overflow-wrap:anywhere;">{{.OtherNames}}</td>
+                        </tr>{{end}}
+                    </table>
+                    <h2 style="margin:14px 0 8px;font-size:15px;">Failure details</h2>
+                    <div style="padding:12px 14px;background-color:#fff3f2;border-left:3px solid #d92d20;color:#632521;font-family:Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;">{{.Error}}</div>
+                </td></tr>
+            </table>
+        </td></tr>
+    </table>
+</body>
+</html>

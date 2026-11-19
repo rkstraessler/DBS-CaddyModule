@@ -17,6 +17,7 @@ import (
 	"github.com/libdns/libdns"
 
 	"github.com/rkstraessler/DBS-CaddyModule/internal/dbsoap"
+	_ "github.com/rkstraessler/DBS-CaddyModule/internal/renewalmail" // Register the Caddy log writer.
 )
 
 const moduleID = "dns.providers.domain_bestellsystem"

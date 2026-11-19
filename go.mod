@@ -8,6 +8,8 @@ require (
 	github.com/libdns/libdns v1.1.1
 	github.com/mholt/acmez/v3 v3.1.7
 	github.com/miekg/dns v1.1.73
+	github.com/rkstraessler/ReikemMailClient_GO v1.0.0
+	go.uber.org/zap v1.28.0
 )
 
 require (
@@ -149,7 +151,6 @@ require (
 	go.step.sm/crypto v0.92.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
