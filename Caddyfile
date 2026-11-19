@@ -8,7 +8,6 @@
 			time_format rfc3339
 		}
 		level ERROR
-		include tls
 	}
 }
 

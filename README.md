@@ -109,7 +109,7 @@ Caddy emails the affected host, UTC timestamp, and final error when an automatic
 
 ## Troubleshooting
 
-- **HTTP 401 or SOAP authentication error** — Verify the full Basic Auth login, SOAP account permissions, and endpoint in Komodo. Errors report status or return codes with credentials and server-supplied message text omitted.
+- **HTTP 401 or SOAP fault code 2200** — DBS rejected authentication. Verify the full Basic Auth login, password, and endpoint in Komodo. DBS can return an authentication fault as HTTP 500. The logs report the HTTP status and any numeric DBS fault code, with credentials and server-supplied message text omitted.
 - **SOAP code 2303 during zone lookup** — Check which public zone is authoritative and whether the SOAP account manages it. For CNAME delegation, configure `dns_challenge_override_domain` with the complete challenge target name in a zone the account can modify.
 - **Propagation timeout** — Inspect the TXT record through public DNS and at authoritative nameservers. Adjust Caddy's `propagation_timeout` if needed. Reads retry bounded transient failures. Writes execute once per call because the vendor contract does not provide a write idempotency key. If a response is lost, inspect the zone before removing any stale challenge record.
 - **Parallel challenges** — Individual vendor operations preserve other records, including different values at the same name. In-process operations for a zone are serialized. Separate Caddy processes need coordinated certificate storage if they manage the same certificates. The vendor exposes neither record IDs nor a compare-and-delete operation for independently recreating an identical record.

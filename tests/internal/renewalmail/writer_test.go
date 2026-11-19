@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -74,6 +75,12 @@ func TestCaddyRenewalMail(t *testing.T) {
 	var config caddy.Config
 	if err := json.Unmarshal(adapted, &config); err != nil {
 		t.Fatal(err)
+	}
+	if config.Logging == nil {
+		t.Fatal("the shipped Caddyfile must configure the mail logger")
+	}
+	if defaultLog := config.Logging.Logs["default"]; defaultLog != nil && slices.Contains(defaultLog.Exclude, "tls") {
+		t.Fatal("the mail logger must leave TLS diagnostics in the default log")
 	}
 	// Keep the shipped logging configuration and exercise it without starting ACME or the admin listener.
 	config.AppsRaw = nil

@@ -97,7 +97,9 @@ func (m *mockDBS) serve(w http.ResponseWriter, req *http.Request) {
 	m.calls[name]++
 	if m.httpStatus != 0 {
 		w.WriteHeader(m.httpStatus)
-		return
+		if m.responseOverride == "" {
+			return
+		}
 	}
 	if m.responseOverride != "" {
 		fmt.Fprint(w, m.responseOverride)
@@ -244,6 +246,29 @@ func TestSOAPFailuresAndRetry(t *testing.T) {
 	mock.httpStatus = http.StatusUnauthorized
 	if _, err := p.AppendRecords(t.Context(), zone, txt); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatalf("authentication failure: %v", err)
+	}
+	mock.httpStatus = http.StatusInternalServerError
+	for _, test := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"authentication fault", `<faultcode>2200</faultcode><faultstring>fixture-secret</faultstring><detail>partner/test</detail>`, "HTTP 500 (SOAP fault code 2200: authentication rejected)"},
+		{"other DBS fault", `<faultcode>2303</faultcode><faultstring>fixture-secret</faultstring>`, "HTTP 500 (SOAP fault code 2303)"},
+		{"symbolic fault", `<faultcode>s:Server</faultcode><faultstring>fixture-secret</faultstring>`, "HTTP 500"},
+		{"unexpected fault code", `<faultcode>fixture-secret</faultcode>`, "HTTP 500"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mock.responseOverride = `<s:Envelope xmlns:s="` + envNS + `"><s:Body><s:Fault>` + test.body + `</s:Fault></s:Body></s:Envelope>`
+			_, err := p.AppendRecords(t.Context(), zone, txt)
+			if err == nil || err.Error() != "DBS SOAP nameserverZoneInfo returned "+test.want {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+	mock.responseOverride = "<html>fixture-secret</html>"
+	if _, err := p.AppendRecords(t.Context(), zone, txt); err == nil || err.Error() != "DBS SOAP nameserverZoneInfo returned HTTP 500" {
+		t.Fatalf("unexpected error for a non-SOAP HTTP 500: %v", err)
 	}
 	mock.httpStatus = 0
 	for _, body := range []string{
