@@ -30,9 +30,23 @@ docker run --rm --network none "$image" caddy list-modules --skip-standard |
 
 docker run --rm --network none \
     --env-file "$tmp/.env" \
-    -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+    "$image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+docker run --rm --network none \
+    --env-file "$tmp/.env" \
     -v "$PWD/sites:/etc/caddy/sites:ro" \
     "$image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+for ca in https://acme-v02.api.letsencrypt.org/directory https://acme-staging-v02.api.letsencrypt.org/directory; do
+    ca_env=()
+    if [[ "$ca" == https://acme-staging-v02.api.letsencrypt.org/directory ]]; then
+        ca_env=(-e "CADDY_ACME_CA=$ca")
+    fi
+    docker run --rm --network none "${ca_env[@]}" \
+        -v "$PWD/sites:/etc/caddy/sites:ro" \
+        "$image" caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile |
+        jq -e --arg ca "$ca" 'any(.. | objects; .ca? == $ca)' >/dev/null
+done
 
 container=$(docker create "$image")
 docker cp "$container:/usr/bin/caddy" "$tmp/caddy"

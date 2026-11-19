@@ -22,5 +22,7 @@ RUN cd /tmp/buildenv_* \
 
 FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+COPY Caddyfile /etc/caddy/Caddyfile
+RUN mkdir -p /etc/caddy/sites
 COPY --from=builder /third-party-licenses/ /usr/share/licenses/caddy-domainbestellsystem/third-party/
 COPY LICENSE /usr/share/licenses/caddy-domainbestellsystem/LICENSE
